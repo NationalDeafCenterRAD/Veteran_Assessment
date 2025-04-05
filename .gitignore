@@ -1,0 +1,16 @@
+.Rproj.user
+*.Rproj
+.DS_Store
+.Rhistory
+.RData
+.Ruserdata
+psam_husd.csv
+psam_pusd.csv
+psam_pusc.csv
+psam_husb.csv
+psam_husc.csv
+psam_pusb.csv
+psam_husa.csv
+psam_pusa.csv
+Raw data/2023_5y_csv_hus.zip
+Raw data/2023_5y_csv_pus.zip
