@@ -5,13 +5,5 @@
 .RData
 .Ruserdata
 *.pdf
-psam_husd.csv
-psam_pusd.csv
-psam_pusc.csv
-psam_husb.csv
-psam_husc.csv
-psam_pusb.csv
-psam_husa.csv
-psam_pusa.csv
-Raw data/2023_5y_csv_hus.zip
-Raw data/2023_5y_csv_pus.zip
+psam_*us*.csv
+*/2023_5y_csv_*us.zip
