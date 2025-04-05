@@ -4,6 +4,7 @@
 .Rhistory
 .RData
 .Ruserdata
+*.pdf
 psam_husd.csv
 psam_pusd.csv
 psam_pusc.csv
