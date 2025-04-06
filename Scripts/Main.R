@@ -456,3 +456,76 @@ write.csv(result,'Assets/Mean_Income/Individual/gender.csv')
 result<-avg_metric(forresult,'mean','PERNP',DEAR,isVeteran,PLUS)
 write.csv(result,'Assets/Mean_Income/Individual/disability.csv')
 
+### Household Income
+##### Median
+## General
+result<-avg_metric(df1,'median','HINCP',DEAR,isVeteran)
+write.csv(result,'Assets/Median_Income/Household/general.csv')
+
+## Race
+result<-avg_metric(forresult,'median','HINCP',DEAR,isVeteran,RACETH)
+write.csv(result,'Assets/Median_Income/Household/race.csv')
+
+## Gender
+result<-avg_metric(forresult,'median','HINCP',DEAR,isVeteran,SEX)
+write.csv(result,'Assets/Median_Income/Household/gender.csv')
+
+## Disability
+result<-avg_metric(forresult,'median','HINCP',DEAR,isVeteran,PLUS)
+write.csv(result,'Assets/Median_Income/Household/disability.csv')
+
+##### Mean
+## General
+result<-avg_metric(forresult,'mean','HINCP',DEAR,isVeteran)
+write.csv(result,'Assets/Mean_Income/Household/general.csv')
+
+## Race
+result<-avg_metric(forresult,'mean','HINCP',DEAR,isVeteran,RACETH)
+write.csv(result,'Assets/Mean_Income/Household/race.csv')
+
+## Gender
+result<-avg_metric(forresult,'mean','HINCP',DEAR,isVeteran,SEX)
+write.csv(result,'Assets/Mean_Income/Household/gender.csv')
+
+## Disability
+result<-avg_metric(forresult,'mean','HINCP',DEAR,isVeteran,PLUS)
+write.csv(result,'Assets/Mean_Income/Household/disability.csv')
+
+
+# Education Attainment----------------------------------------------------------
+education<-df1%>%
+  filter(AGEP > 24)
+
+## General
+cum_percent(education,DEAR,isVeteran)%>%
+  write.csv('Assets/Education/general.csv')
+
+## Race
+cum_percent(education,DEAR,isVeteran,RACETH)%>%
+  write.csv('Assets/Education/race.csv')
+
+## Gender
+cum_percent(education,DEAR,isVeteran,SEX)%>%
+  write.csv('Assets/Education/gender.csv')
+
+## General
+cum_percent(education,DEAR,isVeteran,PLUS)%>%
+  write.csv('Assets/Education/disability.csv')
+
+
+# Enrollment Rate---------------------------------------------------------------
+## General
+percent(df1,'SCH',DEAR,isVeteran,SCH)%>%
+  write.csv(file = 'Assets/Enrollment/general.csv')
+
+## Race
+percent(df1,'SCH',DEAR,isVeteran,RACETH,SCH)%>%
+  write.csv(file = 'Assets/Enrollment/race.csv')
+
+## Gender
+percent(df1,'SCH',DEAR,isVeteran,SEX,SCH)%>%
+  write.csv(file = 'Assets/Enrollment/gender.csv')
+
+## Disability
+percent(df1,'SCH',DEAR,isVeteran,PLUS,SCH)%>%
+  write.csv(file = 'Assets/Enrollment/disability.csv')
