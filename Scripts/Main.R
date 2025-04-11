@@ -321,8 +321,33 @@ df1<-df1%>%
                                 'no disability',
                 ifelse(DEYE == 'Blind',
                                'blind',NA))))%>%
+  mutate(DRAT = as.character(DRAT),
+         DRAT = ifelse(is.na(DRAT),'never served in military',
+                 ifelse(DRAT == '6', 'not reported',
+                 ifelse(DRAT == '5', '≥70% severe','<70% severe'))))%>%
   mutate(HINCP = as.numeric(HINCP))%>%
   mutate(PERNP = as.numeric(PERNP))
+
+# Population estimators---------------------------------------------------------
+## General
+percent(df1,'DEAR',DEAR)%>%
+  write.csv(file = 'Assets/Population/general.csv')
+
+## Race
+percent(df1,'DEAR',DEAR,RACETH)%>%
+  write.csv(file = 'Assets/Population/race.csv')
+
+## Gender
+percent(df1,'DEAR',DEAR,SEX)%>%
+  write.csv(file = 'Assets/Population/gender.csv')
+
+## Disability
+percent(df1,'DEAR',DEAR,PLUS)%>%
+  write.csv(file = 'Assets/Population/disability.csv')
+
+## DRAT
+percent(df1,'DEAR',DEAR,DRAT)%>%
+  write.csv(file = 'Assets/Population/drat.csv')
 
 # Employment--------------------------------------------------------------------
 ## General
