@@ -322,7 +322,7 @@ df1<-df1%>%
                 ifelse(DEYE == 'Blind',
                                'blind',NA))))%>%
   mutate(DRAT = as.character(DRAT),
-         DRAT = ifelse(is.na(DRAT),'never served in military',
+         DRAT = ifelse(is.na(DRAT),'no service-connected disability/never served in military',
                  ifelse(DRAT == '6', 'not reported',
                  ifelse(DRAT == '5', '≥70% severe','<70% severe'))))%>%
   mutate(HINCP = as.numeric(HINCP))%>%
@@ -334,19 +334,19 @@ percent(df1,'DEAR',DEAR)%>%
   write.csv(file = 'Assets/Population/general.csv')
 
 ## Race
-percent(df1,'DEAR',DEAR,RACETH)%>%
+percent(df1,'RACETH',DEAR,RACETH)%>%
   write.csv(file = 'Assets/Population/race.csv')
 
 ## Gender
-percent(df1,'DEAR',DEAR,SEX)%>%
+percent(df1,'SEX',DEAR,SEX)%>%
   write.csv(file = 'Assets/Population/gender.csv')
 
 ## Disability
-percent(df1,'DEAR',DEAR,PLUS)%>%
+percent(df1,'PLUS',DEAR,PLUS)%>%
   write.csv(file = 'Assets/Population/disability.csv')
 
 ## DRAT
-percent(df1,'DEAR',DEAR,DRAT)%>%
+percent(filter(df1,isVeteran == T),'DRAT',DEAR,isVeteran,DRAT)%>%
   write.csv(file = 'Assets/Population/drat.csv')
 
 # Employment--------------------------------------------------------------------
