@@ -1,3 +1,4 @@
+# Prepare-----------------------------------------------------------------------
 # Parameters
 MOST_RECENT_YEAR = 2023
 
@@ -8,6 +9,8 @@ require("bit64")
 require("dplyr")
 require("tidyr")
 require("networkD3")
+require("survival")
+require("survminer")
 #require("ggplot2")
 #require("plotly")
 
@@ -89,7 +92,7 @@ df<-df%>%
          MONTHCODE = as.integer(MONTHCODE),
          age_by_month = ifelse(MONTHCODE >= EDOB_BMONTH, PU_YEAR - TDOB_BYEAR, 
                                PU_YEAR - TDOB_BYEAR - 1))%>%
-  filter(age_by_month > 15 & age_by_month < 65)
+  filter(age_by_month > 16 & age_by_month < 55)
 
 # Clean up data
 df<-df%>%
@@ -196,3 +199,79 @@ sankeyFlow <- function(string){
 # deaf/hearing
 sankeyFlow('deaf')
 sankeyFlow('hearing')
+
+# Enrollment persistence--------------------------------------------------------
+# Limit to all participants being enrolled at the second wave
+# for respondent_id in respondent_ids:
+#   persisting = True
+#   for year in years:
+#     if enrolled[respondent_id][year] == "no":
+#     persisting = False
+#   persistence_status[respondent_id][year] = persisting
+eligible_person_ids<-df%>%
+  mutate(
+    enrolled = ifelse(EEDGRADE %in% 13:20,'yes','no'),
+    eligible = case_when(
+      SWAVE == 1 & enrolled == 'no' ~ TRUE,
+      SWAVE == 2 & enrolled == 'yes' ~ TRUE,
+      TRUE ~ FALSE
+    ),
+    #eligible = case_when(
+    #  enrolled == 'yes' ~ TRUE,
+    #  TRUE ~ FALSE
+    #)
+  )%>%filter(eligible)%>%
+  pull(person_id)%>%
+  unique()
+
+persistence<-df%>%
+  filter(person_id %in% eligible_person_ids)%>%
+  filter(MONTHCODE == 12 & SWAVE > 1)%>%
+  mutate(enrolled = ifelse(EEDGRADE %in% 13:20,'yes','no'))%>%
+  select(person_id,SWAVE,enrolled)%>%
+  arrange(person_id,SWAVE)%>%
+  mutate(persist = T)
+
+
+# Get persistence rate
+for(person in unique(persistence$person_id)){
+  first_enroll <- F
+  persisting <- NA
+  person_idx <- which(persistence$person_id == person)
+  for(i in person_idx){
+    if(!first_enroll && persistence$enrolled[i] == 'yes'){
+      first_enroll <- TRUE
+      persisting <- TRUE
+    } else if(first_enroll && persistence$enrolled[i] == 'no'){
+      persisting <- FALSE
+    }
+    # Before first enrollment, persist is NA; after, it's persisting status
+    if(!first_enroll){
+      persistence$persist[i] <- NA
+    } else {
+      persistence$persist[i] <- persisting
+    }
+  }
+}
+
+# Merge with main data
+clean_df<-persistence%>%
+  select(person_id,SWAVE,persist)%>%
+  right_join(df, by = c('person_id','SWAVE'))%>%
+  filter(MONTHCODE == 12 & !is.na(persist) & person_id %in% eligible_person_ids)
+
+clean_df%>%
+  group_by(EHEARING,SWAVE,persist)%>%
+  summarise(n = n())%>%
+  arrange(EHEARING, SWAVE, persist)%>%
+  filter(persist)%>%
+  select(-persist)
+
+# Implement Cox Regression------------------------------------------------------
+clean_df<-clean_df%>%
+  mutate(persist_int = as.integer(persist))
+
+model <- coxph(Surv(SWAVE,persist_int) ~ EHEARING, data = clean_df)
+cox.zph(model)
+
+ggsurvplot(survfit(model), data = clean_df)
