@@ -11,6 +11,7 @@ require("tidyr")
 require("networkD3")
 require("survival")
 require("survminer")
+require("powerSurvEpi")
 #require("ggplot2")
 #require("plotly")
 
@@ -210,16 +211,12 @@ sankeyFlow('hearing')
 #   persistence_status[respondent_id][year] = persisting
 eligible_person_ids<-df%>%
   mutate(
-    enrolled = ifelse(EEDGRADE %in% 13:20,'yes','no'),
+    enrolled = ifelse(EEDGRADE %in% 13:20,T,F),
     eligible = case_when(
-      SWAVE == 1 & enrolled == 'no' ~ TRUE,
-      SWAVE == 2 & enrolled == 'yes' ~ TRUE,
+      SWAVE == 1 & !enrolled ~ TRUE,
+      SWAVE == 2 & enrolled ~ TRUE,
       TRUE ~ FALSE
-    ),
-    #eligible = case_when(
-    #  enrolled == 'yes' ~ TRUE,
-    #  TRUE ~ FALSE
-    #)
+    )
   )%>%filter(eligible)%>%
   pull(person_id)%>%
   unique()
@@ -227,7 +224,7 @@ eligible_person_ids<-df%>%
 persistence<-df%>%
   filter(person_id %in% eligible_person_ids)%>%
   filter(MONTHCODE == 12 & SWAVE > 1)%>%
-  mutate(enrolled = ifelse(EEDGRADE %in% 13:20,'yes','no'))%>%
+  mutate(enrolled = ifelse(EEDGRADE %in% 13:20,T,F))%>%
   select(person_id,SWAVE,enrolled)%>%
   arrange(person_id,SWAVE)%>%
   mutate(persist = T)
@@ -239,11 +236,13 @@ for(person in unique(persistence$person_id)){
   persisting <- NA
   person_idx <- which(persistence$person_id == person)
   for(i in person_idx){
-    if(!first_enroll && persistence$enrolled[i] == 'yes'){
-      first_enroll <- TRUE
-      persisting <- TRUE
-    } else if(first_enroll && persistence$enrolled[i] == 'no'){
-      persisting <- FALSE
+    if(persistence$SWAVE[i] == 2 && persistence$enrolled[i]){
+      first_enroll <- T
+      persisting <- T
+    } else if (is.na(persisting)){
+      next
+    } else if(!persisting | (first_enroll & !persistence$enrolled[i])){
+      persisting <- F
     }
     # Before first enrollment, persist is NA; after, it's persisting status
     if(!first_enroll){
@@ -263,15 +262,18 @@ clean_df<-persistence%>%
 clean_df%>%
   group_by(EHEARING,SWAVE,persist)%>%
   summarise(n = n())%>%
-  arrange(EHEARING, SWAVE, persist)%>%
-  filter(persist)%>%
-  select(-persist)
+  mutate(persist_int = as.integer(!persist))%>%
+  arrange(EHEARING, SWAVE, persist)
 
 # Implement Cox Regression------------------------------------------------------
 clean_df<-clean_df%>%
-  mutate(persist_int = as.integer(persist))
+  mutate(persist_int = as.integer(!persist),
+         isDeaf = ifelse(EHEARING == 1, 1, 0))
 
-model <- coxph(Surv(SWAVE,persist_int) ~ EHEARING, data = clean_df)
+surv_object <- Surv(time = clean_df$SWAVE, event = clean_df$persist_int)
+km_fit <- survfit(surv_object ~ isDeaf, data=clean_df)
+summary(km_fit)
+
+# This approach is invalidated due to small sample size...
+model <- coxph(Surv(SWAVE,persist_int) ~ isDeaf + age_by_month, data = clean_df)
 cox.zph(model)
-
-ggsurvplot(survfit(model), data = clean_df)
