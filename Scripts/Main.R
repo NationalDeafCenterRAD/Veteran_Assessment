@@ -1,145 +1,18 @@
+# Prepare-----------------------------------------------------------------------
+# Parameters
+MOST_RECENT_YEAR = 2023
+
 # Modules
-library(dplyr)
-library(tidyr)
-library(data.table)
-library(Hmisc)
-
-# Functions---------------------------------------------------------------------
-'%!in%' <- function(x,y)!('%in%'(x,y))
-
-## Make percentages look neat 
-perc_round<-function(x){ # Keep it from becoming 0.00%
-  result<-paste0(round(x*100,2),'%')
-  
-  return(result)
-}
-
-## Percentage calculator
-percent <- function(df,x,...){
-  thestring<-unlist(names(select(df,...)))
-  
-  numerator<-df%>%
-    group_by(...)%>%
-    summarise_at(c('PWGTP',toupper(pwgtps)), sum)
-  
-  unstring<-thestring[thestring != x]
-  
-  denominator<-df%>%
-    group_by(!!! rlang::syms(unstring))%>%
-    summarise_at(c('PWGTP',toupper(pwgtps)), sum)
-  
-  factor <- numerator%>%
-    left_join(denominator, by = unstring, suffix = c('','_d'))
-  
-  # Get percentages in both PWGTP and replications
-  factor[!grepl('_d',names(factor)) & grepl('PWGTP',names(factor))]<-
-    factor[!grepl('_d',names(factor)) & grepl('PWGTP',names(factor))]/
-    factor[grepl('_d',names(factor))]
-  
-  # Get RSE by percentage
-  factor<-bind_cols(select(factor, PWGTP,...),
-                    calculate_se(factor,start = grep('\\PWGTP1\\b',names(factor)), 
-                                 end = grep('\\PWGTP80\\b',names(factor))))%>%
-    mutate(`RSE by percentage` = se/PWGTP)%>%
-    select(-se)%>%
-    rename(percentage = 'PWGTP')
-  
-  # Get RSE by population estimator
-  numerator<-bind_cols(select(numerator, PWGTP,...),
-                       calculate_se(numerator,start = grep('\\PWGTP1\\b',names(numerator)), 
-                                    end = grep('\\PWGTP80\\b',names(numerator))))%>%
-    mutate(`RSE` = se/PWGTP)%>%
-    select(-se)%>%
-    rename(`population estimator` = 'PWGTP')
-  
-  result<-numerator%>%
-    inner_join(factor, by = thestring)
-  
-  # Get numbers of observations
-  n_obs<-df%>%
-    group_by(!!! rlang::syms(unstring))%>%
-    summarise(`Sample size` = n())
-  
-  # Final, cleaned result
-  result<-result%>%
-    left_join(n_obs, by = unstring)%>%
-    mutate(`Population estimator (%)` = paste0(`population estimator`,' (',
-                                               round(percentage*100,1),
-                                               '%)'),
-           `RSE (RSE for %)` = paste0(perc_round(RSE),' (',
-                                      perc_round(`RSE by percentage`),
-                                      ')'))%>%
-    select(...,`Population estimator (%)`,`RSE (RSE for %)`,`Sample size`)
-  
-  return(result)
-}
-
-## Cumulative percentage calculator
-cum_percent <- function(df,...){
-  thestring<-unlist(names(select(df,...)))
-  
-  numerator<-df%>%
-    group_by(..., SCHL)%>%
-    summarise_at(c('PWGTP',toupper(pwgtps)), sum)
-  
-  numerator<-numerator%>%
-    arrange(..., match(SCHL, 
-                       c("phd/dr", "master",
-                         "bachelor","associate",
-                         "some college","HS diploma", 
-                         "no HS diploma")))%>%
-    mutate_at(toupper(c("pwgtp",pwgtps)), cumsum)
-  
-  denominator<-numerator%>%
-    filter(SCHL == 'no HS diploma')%>%
-    ungroup(SCHL)%>%
-    select(-SCHL)
-  
-  factor <- numerator%>%
-    left_join(denominator, by = thestring, suffix = c('','_d'))
-  
-  # Get percentages in both PWGTP and replications
-  factor[!grepl('_d',names(factor)) & grepl('PWGTP',names(factor))]<-
-    factor[!grepl('_d',names(factor)) & grepl('PWGTP',names(factor))]/
-    factor[grepl('_d',names(factor))]
-  
-  # Get RSE by percentage
-  factor<-bind_cols(select(factor, PWGTP, SCHL, ...),
-                    calculate_se(factor,start = grep('\\PWGTP1\\b',names(factor)), 
-                                 end = grep('\\PWGTP80\\b',names(factor))))%>%
-    mutate(`RSE by percentage` = se/PWGTP)%>%
-    select(-se)%>%
-    rename(percentage = 'PWGTP')
-  
-  # Get RSE by population estimator
-  numerator<-bind_cols(select(numerator, PWGTP, SCHL,...),
-                       calculate_se(numerator,start = grep('\\PWGTP1\\b',names(numerator)), 
-                                    end = grep('\\PWGTP80\\b',names(numerator))))%>%
-    mutate(`RSE` = se/PWGTP)%>%
-    select(-se)%>%
-    rename(`population estimator` = 'PWGTP')
-  
-  result<-numerator%>%
-    inner_join(factor, by = c(thestring,'SCHL'), relationship = 'one-to-one')
-  
-  # Get numbers of observations
-  n_obs<-df%>%
-    group_by(...)%>%
-    summarise(`Sample size` = n())
-  
-  # Final, cleaned result
-  result<-result%>%
-    left_join(n_obs, by = thestring)%>%
-    mutate(`Population estimator (%)` = paste0(`population estimator`,' (',
-                                               round(percentage*100,1),
-                                               '%)'),
-           `RSE (RSE for %)` = paste0(perc_round(RSE),' (',
-                                      perc_round(`RSE by percentage`),
-                                      ')'))%>%
-    select(..., SCHL, `Population estimator (%)`,`RSE (RSE for %)`,`Sample size`)
-  
-  return(result)
-}
+require("data.table")
+require("lubridate")
+require("bit64")
+require("dplyr")
+require("tidyr")
+require("networkD3")
+require("survival")
+require("survminer")
+#require("ggplot2")
+#require("plotly")
 
 ## Average calculator
 avg_metric <- function(df,type,metric,...){ # Create average for any metric
@@ -176,381 +49,229 @@ avg_metric <- function(df,type,metric,...){ # Create average for any metric
   return(result)
 }
 
-# Obtain and clean up data------------------------------------------------------
-dir <- paste(getwd(),'Scripts/Statistics.R',sep='/')
-source(dir)
+# Prepare data------------------------------------------------------------------
+years <- seq(MOST_RECENT_YEAR,MOST_RECENT_YEAR-5)
+variables <- c('SSUID','PNUM','MONTHCODE','ERESIDENCEID','ERELRPE',
+               'SPANEL','SWAVE','WPFINWGT','THHLDSTATUS', # <- use to filter for disabilities
+               # Disabilities
+               'EHEARING','ESELFCARE','ESEEING','EAMBULAT','EERRANDS','ECOGNIT',
+               # Ascribed Attributes
+               'TDOB_BYEAR','EDOB_BMONTH','ESEX','EHISPAN','ERACE','TRACE','EBORNUS',
+               # Education and employment
+               'EEDUC','RMESR','EEDENROLL','EEDGRADE','EEDBMONTH','EEDEMONTH','TMWKHRS','TPTOTINC',
+               # Military Service
+               'TAF8','EAF1','EAF2','EAF3','EAF4','EAF5','EAF6','EAF7','EAF8','EAF9',
+               'EAFNOW',
+               # Veteran-connected disability
+               'TVADISRATE','EVATYP1YN')
 
-# List of PWGTP1-PWGTP80
-pwgtps <- c()
-
-for(i in seq(1,80,1)){
-  pwgtps[i] <- paste('pwgtp',i,sep='')
+df <- data.table()
+for(i in years){
+  path <- paste('Raw_data/pu',i,'.csv',sep='')
+  pu <- fread(path, sep = '|', select = variables)%>%
+    mutate(pu_year = i)
+  df <- bind_rows(df,pu)
 }
+remove(pu)
+names(df) <- toupper(names(df))
 
-# Get data from local or File Transfer Protocol of Census Bureau ACS 1Y PUMS
-year_n <- 2023
-filepath <- paste0(getwd(),'/Raw_Data/',year_n,'_5y_csv_pus.zip')
+# 1. Filter PNUM to 1XX only
+#    - [1]XX indicates first wave 
+#    - 1[XX] indicates the household themself or the people who live with them 
+# 2. Filter to 2021 PANEL
+# 3. All should be at least 16 years old at the beginning
+# 4. All should be 64 years at maximum at 2023 in any time period
+# 5. All should returning HHLD or new HHLD member
+df<-df%>%
+  mutate(PNUM = as.character(PNUM),
+         SPANEL = as.integer(SPANEL),
+         THHLDSTATUS = as.integer(THHLDSTATUS))%>%
+  filter(grepl('^1\\d{2}',PNUM) & SPANEL <= 2021 & THHLDSTATUS %in% 1:2)%>%
+  mutate(TDOB_BYEAR = as.integer(TDOB_BYEAR),
+         EDOB_BMONTH = as.integer(EDOB_BMONTH),
+         MONTHCODE = as.integer(MONTHCODE),
+         age_by_month = ifelse(MONTHCODE >= EDOB_BMONTH, PU_YEAR - TDOB_BYEAR, 
+                               PU_YEAR - TDOB_BYEAR - 1))%>%
+  filter(age_by_month > 16 & age_by_month < 55)
 
-if(!file.exists(filepath)){
-  urlpath<-paste0('https://www2.census.gov/programs-surveys/acs/data/pums/',
-                  year_n,'/5-Year/csv_pus.zip')
-  download.file(urlpath, destfile = filepath, method = 'curl')
-}
+# Clean up data
+df<-df%>%
+  mutate(auditory = ifelse(as.integer(EHEARING) == 1, 'deaf','hearing'),
+         isLatinx = ifelse(is.na(EHISPAN),F,T),
+         TRACE = as.integer(TRACE),
+         raceth = case_when(
+           isLatinx ~ 'Latine',
+           TRACE == 1 ~ 'white',
+           TRACE == 2 ~ 'Black',
+           TRACE == 3 ~ 'Native American',
+           TRACE %in% 4:5 ~ 'Asian',
+           is.na(TRACE) ~ 'multiracial',
+           TRUE ~ 'multiracial'),
+         gender = ifelse(as.integer(ESEX) == 1,'men','women'))%>%
+  mutate(across(c('EHEARING','ESELFCARE','ESEEING','EAMBULAT','EERRANDS','ECOGNIT'),
+                as.integer))%>%
+  mutate(disability = case_when(
+           ESEEING == 1 ~ 'blind',
+           ESEEING == 2 & (
+             ESELFCARE == 1 | EAMBULAT == 1 | EERRANDS == 1 | ECOGNIT == 1
+           ) ~ 'disabled',
+           ESEEING == 2 & ESELFCARE == 2 & EAMBULAT == 2 &
+           EERRANDS == 2 & ECOGNIT == 2 ~ 'without additional disabilities'))%>%
+  mutate(person_id = paste0(SSUID,PNUM))%>%
+  mutate(edu_level = case_when(
+    EEDUC == 39 ~ 'High school diploma',
+    EEDUC %in% 40:41 ~ 'Some college',
+    EEDUC %in% 42 ~ "Associate's degree",
+    EEDUC %in% 43 ~ "Bachelor's degree",
+    EEDUC %in% 44 ~ "Master's degree",
+    EEDUC %in% 45:46 ~ "PhD, JD or MD",
+    TRUE ~ "No high school diploma"
+  ))
 
-unzipped <- tryCatch(unzip(filepath),error = function(e){
-  "error"})
+# Assess sample sizes-----------------------------------------------------------
+# Education level
+df%>%
+  filter(MONTHCODE == 12)%>%
+  group_by(SWAVE,auditory,edu_level)%>%
+  summarise(n=n_distinct(person_id))%>%
+  arrange(SWAVE, auditory, match(edu_level, 
+    c("No high school diploma", "High school diploma",
+      "Some college","Associate's degree",
+      "Bachelor's degree","Master's degree", 
+      "PhD, JD or MD"))
+  )%>%
+  pivot_wider(names_from = SWAVE, values_from = n)
 
-# Get data as whole
-if(!any(grep('.csv',unzipped))){
-  return(data.frame(attribution = NA, status = NA, percentage = NA, 
-                    margin_errors = NA, variable = NA, type = NA, state = NA, 
-                    year = year_n))
-}else{
-  unzipped<-unzipped[grep('.csv',unzipped)]
+# College enrollment
+df%>%
+  filter(MONTHCODE == 12)%>%
+  mutate(enrolled = ifelse(EEDGRADE %in% 13:20,'yes','no'))%>%
+  group_by(SWAVE,auditory,enrolled)%>%
+  summarise(n=n_distinct(person_id))%>%
+  pivot_wider(names_from = SWAVE, values_from = n)
+
+# Identify all respondents with at least two education levels each
+result<-df%>%
+  filter(EEDUC > 38)%>%
+  group_by(person_id)%>%
+  summarise(educations = n_distinct(edu_level))%>%
+  right_join(df, by='person_id', relationship = 'one-to-many')%>%
+  group_by(auditory,educations)%>%
+  summarise(n=n_distinct(person_id))
+
+# Sankey diagram based on this
+sankeyFlow <- function(string){
+  edu_level_order <- c("No high school diploma", "High school diploma",
+                       "Some college","Associate's degree",
+                       "Bachelor's degree","Master's degree", 
+                       "PhD, JD or MD")
   
-  mega_df<-data.frame()
-  for(j in 1:length(unzipped)){
-    part_df<-fread(unzipped[j])
-    names(part_df)<-toupper(names(part_df))
-    part_df<-select(part_df, 
-                    toupper(c("serialno","state","agep","ddrs","dear","deye",
-                              "dout","dphy","dratx","drem","drat","cow",
-                              "fdearp","esr","schl","sch","schg","rac1p",
-                              "hisp","sex","pernp","pincp","ssip","wkhp",
-                              "wkwn","adjinc","pwgtp","drat","mil","nativity",
-                              "pobp","qtrbir","vps","waob","mlpa","mlpb","mlpcd",
-                              "mlpe","mlpfg","mlph","mlpj","mlpik", 
-                              "pwgtp",pwgtps)))%>%
-      filter(AGEP > 15 & AGEP < 65)
-    mega_df<-bind_rows(mega_df,part_df)
+  df_local <- df
+  
+  df_local$edu_level<-factor(df$edu_level, levels = edu_level_order)
+  
+  links<-df_local%>%
+    filter(auditory == string)%>%
+    select(person_id,edu_level)%>%
+    unique()%>%
+    arrange(person_id, edu_level)%>%
+    group_by(person_id)%>%
+    mutate(next_edu = lead(edu_level))%>%
+    filter(!is.na(next_edu))%>%
+    rename(
+      'source' = 'edu_level',
+      'target' = 'next_edu'
+    )%>%group_by(source,target)%>%
+    summarise(value = n(), .groups = "drop")
+  
+  nodes <- data.frame(
+    name=levels(df_local$edu_level))
+  
+  links$IDsource <- as.integer(links$source) - 1
+  links$IDtarget <- as.integer(links$target) - 1
+  
+  return(sankeyNetwork(Links = links, Nodes = nodes,
+                Source = "IDsource", Target = "IDtarget",
+                Value = "value", NodeID = "name", 
+                sinksRight=T,width = 900, height = 900))
+}
+
+# deaf/hearing
+sankeyFlow('deaf')
+sankeyFlow('hearing')
+
+# Enrollment persistence--------------------------------------------------------
+# Limit to all participants being enrolled at the second wave
+# for respondent_id in respondent_ids:
+#   persisting = True
+#   for year in years:
+#     if enrolled[respondent_id][year] == "no":
+#     persisting = False
+#   persistence_status[respondent_id][year] = persisting
+eligible_person_ids<-df%>%
+  mutate(
+    enrolled = ifelse(EEDGRADE %in% 13:20,'yes','no'),
+    eligible = case_when(
+      SWAVE == 1 & enrolled == 'no' ~ TRUE,
+      SWAVE == 2 & enrolled == 'yes' ~ TRUE,
+      TRUE ~ FALSE
+    ),
+    #eligible = case_when(
+    #  enrolled == 'yes' ~ TRUE,
+    #  TRUE ~ FALSE
+    #)
+  )%>%filter(eligible)%>%
+  pull(person_id)%>%
+  unique()
+
+persistence<-df%>%
+  filter(person_id %in% eligible_person_ids)%>%
+  filter(MONTHCODE == 12 & SWAVE > 1)%>%
+  mutate(enrolled = ifelse(EEDGRADE %in% 13:20,'yes','no'))%>%
+  select(person_id,SWAVE,enrolled)%>%
+  arrange(person_id,SWAVE)%>%
+  mutate(persist = T)
+
+
+# Get persistence rate
+for(person in unique(persistence$person_id)){
+  first_enroll <- F
+  persisting <- NA
+  person_idx <- which(persistence$person_id == person)
+  for(i in person_idx){
+    if(!first_enroll && persistence$enrolled[i] == 'yes'){
+      first_enroll <- TRUE
+      persisting <- TRUE
+    } else if(first_enroll && persistence$enrolled[i] == 'no'){
+      persisting <- FALSE
+    }
+    # Before first enrollment, persist is NA; after, it's persisting status
+    if(!first_enroll){
+      persistence$persist[i] <- NA
+    } else {
+      persistence$persist[i] <- persisting
+    }
   }
 }
 
-hdestfile <- paste(getwd(),'Raw_Data','2023_5y_csv_hus.zip',sep='/')
-hunzipped <- unzip(hdestfile)
-hvector<-grep('.csv',hunzipped)
+# Merge with main data
+clean_df<-persistence%>%
+  select(person_id,SWAVE,persist)%>%
+  right_join(df, by = c('person_id','SWAVE'))%>%
+  filter(MONTHCODE == 12 & !is.na(persist) & person_id %in% eligible_person_ids)
 
-hmega_df <- data.frame()
-for(i in hvector){
-  part_df<-fread(hunzipped[i],
-                 select = c('SERIALNO',
-                            'LAPTOP','BROADBND','PARTNER','FS',
-                            'COMPOTHX','TABLET','FPARC','MULTG',
-                            'HUPAC','HUPAOC','ACCESSINET','NRC',
-                            'NP','HINCP','HHLANP'
-                 )
-  )
-  hmega_df<-bind_rows(hmega_df,part_df)
-}
+clean_df%>%
+  group_by(EHEARING,SWAVE,persist)%>%
+  summarise(n = n())%>%
+  arrange(EHEARING, SWAVE, persist)%>%
+  filter(persist)%>%
+  select(-persist)
 
-df1<-mega_df%>%left_join(hmega_df, by = 'SERIALNO')
-remove(mega_df,hmega_df)
+# Implement Cox Regression------------------------------------------------------
+clean_df<-clean_df%>%
+  mutate(persist_int = as.integer(persist))
 
-# Add objects to gitignore list due to larger than 1 GB
-# system("find . -size +500M -not -path '*/.*' | sed 's|^\\./||' >> .gitignore")
+model <- coxph(Surv(SWAVE,persist_int) ~ EHEARING, data = clean_df)
+cox.zph(model)
 
-# Clean up
-df1<-df1%>%
-  mutate(DEAR = ifelse(DEAR == '1', "deaf", "hearing"))%>%# DEAR recode
-  mutate(RAC1P = recode(RAC1P, '1' = 'White',             # RAC1P recode
-                               '2' = 'Black',
-                               '3' = 'Native American',
-                               '6' = 'Asian/Pacific Islander',
-                               '7' = 'Asian/Pacific Islander',
-                               '8' = 'Other Race/Multiracial',
-                               '9' = 'Other Race/Multiracial',
-                               .default = 'Native American'))%>%
-  mutate(HISP = ifelse(HISP == '1', 'Not Latine','Latine'))%>% # HISP recode
-  mutate(SEX = ifelse(SEX == '1','male','female'))%>%   # SEX recode
-  mutate(DEYE = recode(DEYE, '1' = 'Blind',             # DEYE recode
-                       '2' = 'Sighted'))%>%
-  mutate(DDRS = recode(DDRS, '1' = 'Yes',               # DDRS recode
-                       '2' = 'No'))%>%
-  mutate(DOUT = recode(DOUT, '1' = 'Yes',               # DOUT recode
-                       '2' = 'No'))%>%
-  mutate(DPHY = recode(DPHY, '1' = 'Yes',               # DPHY recode
-                       '2' = 'No'))%>%
-  mutate(DREM = recode(DREM, '1' = 'Yes',               # DREM recode
-                       '2' = 'No'))%>%
-  mutate(ESR = recode(ESR, '1' = 'employed',
-                      '3' = 'unemployed',
-                      '6' = 'notinLF', 
-                      .default = 'employed'))%>%
-  mutate(RACETH=ifelse(HISP == 'Latine','Latine',      # Create RACETH
-                ifelse(RAC1P == 'Black','Black',
-                ifelse(RAC1P == 'Asian/Pacific Islander',
-                                'Asian/Pacific Islander',
-                ifelse(RAC1P == 'Native American',
-                                'Native American',
-                ifelse(RAC1P == 'White','White',
-                                'Other Race/Multiracial'))))))%>%
-  mutate(SCH = ifelse(SCHG > 14, 'Enrolled',
-                      'Not Enrolled'))%>%
-  mutate(SCHL = ifelse(SCHL < 16,'no HS diploma', 
-                ifelse(SCHL <= 17,'HS diploma',
-                ifelse(SCHL < 20,'some college',
-                ifelse(SCHL == 20,'associate',
-                ifelse(SCHL == 21,'bachelor', 
-                ifelse(SCHL <= 22,'master',
-                ifelse(SCHL > 22, 'phd/dr',NA))))))))%>%
-  mutate(COW_original = COW,
-         COW = as.character(COW),
-         COW = ifelse(is.na(COW),'N/A',COW),
-         COW = recode(COW,
-                      '1' = 'For-profit',
-                      '2' = 'Non-profit',
-                      '3' = "Local gov't",
-                      '4' = "State gov't",
-                      '5' = "Federal gov't",
-                      '9' = "Unemployed",
-                      'N/A' = 'N/A',
-                      .default = 'Self-employed/Business'
-         ))%>%
-  mutate(isVeteran = ifelse(is.na(VPS),F,T))%>%
-  mutate(PLUS = ifelse((DDRS == 'Yes' |     # self-care difficulty
-                        DOUT == 'Yes' |   # independent living difficulty
-                        DPHY == 'Yes' |   # ambulatory difficulty
-                        DREM == 'Yes') &  # cognitive difficulty
-                        DEYE == 'Sighted',# deafdisabled only
-                       'disabled',
-                ifelse((DDRS == 'No' &    # deaf only
-                        DOUT == 'No' &
-                        DPHY == 'No' &
-                        DREM == 'No') & 
-                        DEYE == 'Sighted',
-                                'no disability',
-                ifelse(DEYE == 'Blind',
-                               'blind',NA))))%>%
-  mutate(DRAT = as.character(DRAT),
-         DRAT = ifelse(is.na(DRAT),'no service-connected disability/never served in military',
-                 ifelse(DRAT == '6', 'not reported',
-                 ifelse(DRAT == '5', '≥70% severe','<70% severe'))))%>%
-  mutate(HINCP = as.numeric(HINCP))%>%
-  mutate(PERNP = as.numeric(PERNP))
-
-# Population estimators---------------------------------------------------------
-## General
-percent(df1,'DEAR',DEAR)%>%
-  write.csv(file = 'Assets/Population/general.csv')
-
-## Race
-percent(df1,'RACETH',DEAR,RACETH)%>%
-  write.csv(file = 'Assets/Population/race.csv')
-
-## Gender
-percent(df1,'SEX',DEAR,SEX)%>%
-  write.csv(file = 'Assets/Population/gender.csv')
-
-## Disability
-percent(df1,'PLUS',DEAR,PLUS)%>%
-  write.csv(file = 'Assets/Population/disability.csv')
-
-## DRAT
-percent(filter(df1,isVeteran == T),'DRAT',DEAR,isVeteran,DRAT)%>%
-  write.csv(file = 'Assets/Population/drat.csv')
-
-# Employment--------------------------------------------------------------------
-## General
-result<-percent(df1,'ESR',DEAR,isVeteran,ESR)
-write.csv(result, file = 'Assets/Employment/general.csv')
-
-## Race
-result<-percent(df1,'ESR',DEAR,isVeteran,RACETH,ESR)
-write.csv(result, file = 'Assets/Employment/race.csv')
-
-## Gender
-result<-percent(df1,'ESR',DEAR,isVeteran,SEX,ESR)
-write.csv(result, file = 'Assets/Employment/gender.csv')
-
-## Disability
-result<-percent(df1,'ESR',DEAR,isVeteran,PLUS,ESR)
-write.csv(result, file = 'Assets/Employment/disability.csv')
-
-# Class of Worker---------------------------------------------------------------
-## General
-result<-percent(df1,'COW',DEAR,isVeteran,COW)
-write.csv(result, file = 'Assets/ClassOfWorker/general.csv')
-
-## Race
-result<-percent(df1,'COW',DEAR,isVeteran,RACETH,COW)
-write.csv(result, file = 'Assets/ClassOfWorker/race.csv')
-
-## Gender
-result<-percent(df1,'COW',DEAR,isVeteran,SEX,COW)
-write.csv(result, file = 'Assets/ClassOfWorker/gender.csv')
-
-## Disability
-result<-percent(df1,'COW',DEAR,isVeteran,PLUS,COW)
-write.csv(result, file = 'Assets/ClassOfWorker/disability.csv')
-
-# Type of Employment------------------------------------------------------------
-employed<-df1%>%
-  filter(ESR == 'employed')
-employed<-employed%>% # self employee and bizowner
-  mutate(selfEmp = ifelse(COW_original %in% c(6,7), 'Y', 'N'))%>%
-  mutate(bizOwner = ifelse(COW_original == 7, 'Y','N'))%>%
-  mutate(fullTime = ifelse(WKWN %in% c(50,51,52) & WKHP >= 35,'yes','any'))
-
-### Self-Employed
-## General
-result<-percent(employed,'selfEmp',DEAR,isVeteran,selfEmp)
-write.csv(result, file = 'Assets/TypeOfEmployment/SelfEmployed/general.csv')
-
-## Race
-result<-percent(employed,'selfEmp',DEAR,isVeteran,RACETH,selfEmp)
-write.csv(result, file = 'Assets/TypeOfEmployment/SelfEmployed/race.csv')
-
-## Gender
-result<-percent(employed,'selfEmp',DEAR,isVeteran,SEX,selfEmp)
-write.csv(result, file = 'Assets/TypeOfEmployment/SelfEmployed/gender.csv')
-
-## Disability
-result<-percent(employed,'selfEmp',DEAR,isVeteran,PLUS,selfEmp)
-write.csv(result, file = 'Assets/TypeOfEmployment/SelfEmployed/disability.csv')
-
-### Business owners
-## General
-result<-percent(employed,'bizOwner',DEAR,isVeteran,bizOwner)
-write.csv(result, file = 'Assets/TypeOfEmployment/BusinessOwners/general.csv')
-
-## Race
-result<-percent(employed,'bizOwner',DEAR,isVeteran,RACETH,bizOwner)
-write.csv(result, file = 'Assets/TypeOfEmployment/BusinessOwners/race.csv')
-
-## Gender
-result<-percent(employed,'bizOwner',DEAR,isVeteran,SEX,bizOwner)
-write.csv(result, file = 'Assets/TypeOfEmployment/BusinessOwners/gender.csv')
-
-## Disability
-result<-percent(employed,'bizOwner',DEAR,isVeteran,PLUS,bizOwner)
-write.csv(result, file = 'Assets/TypeOfEmployment/BusinessOwners/disability.csv')
-
-### Full-Time Workers
-## General
-result<-percent(employed,'fullTime',DEAR,isVeteran,fullTime)
-write.csv(result, file = 'Assets/TypeOfEmployment/FullTimeWorkers/general.csv')
-
-## Race
-result<-percent(employed,'fullTime',DEAR,isVeteran,RACETH,fullTime)
-write.csv(result, file = 'Assets/TypeOfEmployment/FullTimeWorkers/race.csv')
-
-## Gender
-result<-percent(employed,'fullTime',DEAR,isVeteran,SEX,fullTime)
-write.csv(result, file = 'Assets/TypeOfEmployment/FullTimeWorkers/gender.csv')
-
-## Disability
-result<-percent(employed,'fullTime',DEAR,isVeteran,PLUS,fullTime)
-write.csv(result, file = 'Assets/TypeOfEmployment/FullTimeWorkers/disability.csv')
-
-# Income------------------------------------------------------------------------
-### Individual Income
-forresult<-employed%>%
-  filter(fullTime == 'yes')
-
-##### Median
-## General
-result<-avg_metric(forresult,'median','PERNP',DEAR,isVeteran)
-write.csv(result,'Assets/Median_Income/Individual/general.csv')
-
-## Race
-result<-avg_metric(forresult,'median','PERNP',DEAR,isVeteran,RACETH)
-write.csv(result,'Assets/Median_Income/Individual/race.csv')
-
-## Gender
-result<-avg_metric(forresult,'median','PERNP',DEAR,isVeteran,SEX)
-write.csv(result,'Assets/Median_Income/Individual/gender.csv')
-
-## Disability
-result<-avg_metric(forresult,'median','PERNP',DEAR,isVeteran,PLUS)
-write.csv(result,'Assets/Median_Income/Individual/disability.csv')
-
-##### Mean
-## General
-result<-avg_metric(forresult,'mean','PERNP',DEAR,isVeteran)
-write.csv(result,'Assets/Mean_Income/Individual/general.csv')
-
-## Race
-result<-avg_metric(forresult,'mean','PERNP',DEAR,isVeteran,RACETH)
-write.csv(result,'Assets/Mean_Income/Individual/race.csv')
-
-## Gender
-result<-avg_metric(forresult,'mean','PERNP',DEAR,isVeteran,SEX)
-write.csv(result,'Assets/Mean_Income/Individual/gender.csv')
-
-## Disability
-result<-avg_metric(forresult,'mean','PERNP',DEAR,isVeteran,PLUS)
-write.csv(result,'Assets/Mean_Income/Individual/disability.csv')
-
-### Household Income
-##### Median
-## General
-result<-avg_metric(df1,'median','HINCP',DEAR,isVeteran)
-write.csv(result,'Assets/Median_Income/Household/general.csv')
-
-## Race
-result<-avg_metric(forresult,'median','HINCP',DEAR,isVeteran,RACETH)
-write.csv(result,'Assets/Median_Income/Household/race.csv')
-
-## Gender
-result<-avg_metric(forresult,'median','HINCP',DEAR,isVeteran,SEX)
-write.csv(result,'Assets/Median_Income/Household/gender.csv')
-
-## Disability
-result<-avg_metric(forresult,'median','HINCP',DEAR,isVeteran,PLUS)
-write.csv(result,'Assets/Median_Income/Household/disability.csv')
-
-##### Mean
-## General
-result<-avg_metric(forresult,'mean','HINCP',DEAR,isVeteran)
-write.csv(result,'Assets/Mean_Income/Household/general.csv')
-
-## Race
-result<-avg_metric(forresult,'mean','HINCP',DEAR,isVeteran,RACETH)
-write.csv(result,'Assets/Mean_Income/Household/race.csv')
-
-## Gender
-result<-avg_metric(forresult,'mean','HINCP',DEAR,isVeteran,SEX)
-write.csv(result,'Assets/Mean_Income/Household/gender.csv')
-
-## Disability
-result<-avg_metric(forresult,'mean','HINCP',DEAR,isVeteran,PLUS)
-write.csv(result,'Assets/Mean_Income/Household/disability.csv')
-
-
-# Education Attainment----------------------------------------------------------
-education<-df1%>%
-  filter(AGEP > 24)
-
-## General
-cum_percent(education,DEAR,isVeteran)%>%
-  write.csv('Assets/Education/general.csv')
-
-## Race
-cum_percent(education,DEAR,isVeteran,RACETH)%>%
-  write.csv('Assets/Education/race.csv')
-
-## Gender
-cum_percent(education,DEAR,isVeteran,SEX)%>%
-  write.csv('Assets/Education/gender.csv')
-
-## General
-cum_percent(education,DEAR,isVeteran,PLUS)%>%
-  write.csv('Assets/Education/disability.csv')
-
-
-# Enrollment Rate---------------------------------------------------------------
-## General
-percent(df1,'SCH',DEAR,isVeteran,SCH)%>%
-  write.csv(file = 'Assets/Enrollment/general.csv')
-
-## Race
-percent(df1,'SCH',DEAR,isVeteran,RACETH,SCH)%>%
-  write.csv(file = 'Assets/Enrollment/race.csv')
-
-## Gender
-percent(df1,'SCH',DEAR,isVeteran,SEX,SCH)%>%
-  write.csv(file = 'Assets/Enrollment/gender.csv')
-
-## Disability
-percent(df1,'SCH',DEAR,isVeteran,PLUS,SCH)%>%
-  write.csv(file = 'Assets/Enrollment/disability.csv')
+ggsurvplot(survfit(model), data = clean_df)
