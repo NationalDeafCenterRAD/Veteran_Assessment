@@ -225,33 +225,50 @@ persistence<-df%>%
   filter(person_id %in% eligible_person_ids)%>%
   filter(MONTHCODE == 12 & SWAVE > 1)%>%
   mutate(enrolled = ifelse(EEDGRADE %in% 13:20,T,F))%>%
-  select(person_id,SWAVE,enrolled)%>%
+  select(person_id,SWAVE,enrolled,EEDUC)%>%
   arrange(person_id,SWAVE)%>%
-  mutate(persist = T)
+  mutate(persist = NA, attained = NA)
 
 
 # Get persistence rate
 for(person in unique(persistence$person_id)){
   first_enroll <- F
   persisting <- NA
+  prev_educ <- NA
+  current_educ <- NA
   person_idx <- which(persistence$person_id == person)
+
   for(i in person_idx){
-    if(persistence$SWAVE[i] == 2 && persistence$enrolled[i]){
+    current_educ <- persistence$EEDUC[i]
+    if(persistence$SWAVE[i] == 2 & persistence$enrolled[i]){
       first_enroll <- T
       persisting <- T
+      prev_educ <- current_educ
     } else if (is.na(persisting)){
       next
     } else if(!persisting | (first_enroll & !persistence$enrolled[i])){
       persisting <- F
     }
     # Before first enrollment, persist is NA; after, it's persisting status
+    attained<-!is.na(prev_educ) && current_educ > prev_educ && current_educ > 41 
+    persistence$attained[i] <- attained
     if(!first_enroll){
       persistence$persist[i] <- NA
     } else {
-      persistence$persist[i] <- persisting
+      if(persisting){
+        persistence$persist[i] <- persisting
+      }else{
+        persistence$persist[i] <- attained
+      }
     }
   }
 }
+
+# Verify my work
+#persistence%>%
+#  arrange(person_id,SWAVE)%>%
+#  select(SWAVE,persist,enrolled,EEDUC)%>%
+#  unique()%>%View()
 
 # Merge with main data
 clean_df<-persistence%>%
@@ -262,18 +279,24 @@ clean_df<-persistence%>%
 clean_df%>%
   group_by(EHEARING,SWAVE,persist)%>%
   summarise(n = n())%>%
-  mutate(persist_int = as.integer(!persist))%>%
-  arrange(EHEARING, SWAVE, persist)
+  mutate(
+    persist_int = as.integer(!persist),
+  )%>%arrange(EHEARING, SWAVE, persist)
 
 # Implement Cox Regression------------------------------------------------------
 clean_df<-clean_df%>%
   mutate(persist_int = as.integer(!persist),
-         isDeaf = ifelse(EHEARING == 1, 1, 0))
+         isDeaf = ifelse(EHEARING == 1, 1, 0),
+         isWhite = ifelse(ERACE == 1,1,0),
+         isOtherDisability = ifelse(EAMBULAT == 1 | ECOGNIT == 1 | ESELFCARE == 1 |
+                                    EERRANDS == 1 | ESEEING == 1, 1, 0))
 
+# Keep track of participants
 surv_object <- Surv(time = clean_df$SWAVE, event = clean_df$persist_int)
 km_fit <- survfit(surv_object ~ isDeaf, data=clean_df)
 summary(km_fit)
 
-# This approach is invalidated due to small sample size...
-model <- coxph(Surv(SWAVE,persist_int) ~ isDeaf + age_by_month, data = clean_df)
+# Cox
+model <- coxph(Surv(SWAVE,persist_int) ~ isDeaf + age_by_month + isOtherDisability + isWhite, data = clean_df)
 cox.zph(model)
+summary(model)
