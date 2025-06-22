@@ -44,7 +44,7 @@ df<-df%>%
                                PU_YEAR - TDOB_BYEAR, 
                                PU_YEAR - TDOB_BYEAR - 1))%>%
   filter(grepl('^1\\d{2}',PNUM) & SPANEL <= 2021 &
-           age_by_month > 16 & age_by_month < 55)
+         age_by_month > 16 & age_by_month < 55)
 
 # Enrollment persistence--------------------------------------------------------
 # 1. Enrollment must be between college year 1 and vocational programs
@@ -81,10 +81,10 @@ for(person in unique(persistence$person_id)){
       first_enroll <- T
       persist <- T
       prev_educ <- current_educ
-      # Skip that row if NA in persist
+    # Skip that row if NA in persist
     }else if(is.na(persist)){
       next
-      # If first enroll and stop enrollment, then no longer persist
+    # If first enroll and stop enrollment, then no longer persist
     }else if(!persist | (!persistence$enrolled[i] & first_enroll)){
       persist <- F
     }
@@ -95,7 +95,7 @@ for(person in unique(persistence$person_id)){
     # If attained, non-event forever
     if(attained){
       persistence$persist[i] <- T
-      # Either true or false in persist
+    # Either true or false in persist
     }else{
       persistence$persist[i] <- persist
     }
@@ -119,13 +119,12 @@ df<-persistence%>%
   select(person_id,SWAVE,persist)%>%
   right_join(df, by = c('person_id','SWAVE'))%>%
   filter(MONTHCODE == 12 & !is.na(persist))%>%   # Filter to December and no NAs
-  na.omit()%>%
   mutate(persist_int = as.integer(!persist),     # Binarize them for Cox
          isDeaf = ifelse(EHEARING == 1, 1, 0),
          isWhite = ifelse(ERACE == 1,1,0),
          isOtherDisability = ifelse(EAMBULAT == 1 | ECOGNIT == 1 | 
-                                      ESELFCARE == 1 | EERRANDS == 1 | 
-                                      ESEEING == 1, 1, 0))
+                                    ESELFCARE == 1 | EERRANDS == 1 | 
+                                    ESEEING == 1, 1, 0))
 
 # Find loss of followups and implement Cox regression---------------------------
 surv_object <- Surv(time = df$SWAVE, event = df$persist)
@@ -133,6 +132,6 @@ km_fit <- survfit(surv_object ~ isDeaf, data=df)
 summary(km_fit)
 
 model <- coxph(Surv(SWAVE,persist_int) ~ isDeaf + age_by_month + 
-                 isOtherDisability + isWhite, data = df)
+               isOtherDisability + isWhite, data = df)
 cox.zph(model)
 summary(model)
